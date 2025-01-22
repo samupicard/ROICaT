@@ -7,6 +7,11 @@
 [![build](https://github.com/RichieHakim/ROICaT/actions/workflows/.github/workflows/build.yml/badge.svg)](https://github.com/RichieHakim/ROICaT/actions/workflows/build.yml) 
 [![PyPI version](https://badge.fury.io/py/roicat.svg)](https://badge.fury.io/py/roicat)
 [![Downloads](https://pepy.tech/badge/roicat)](https://pepy.tech/project/roicat)
+[![build](https://github.com/RichieHakim/ROICaT/actions/workflows/.github/workflows/check_huggingface_space.yml/badge.svg)](https://github.com/RichieHakim/ROICaT/actions/workflows/check_huggingface_space.yml) 
+
+
+**🎉 CONTRIBUTIONS WELCOME! 🎉** \
+See the [TODO](#todo) section
 
 - **Documentation: [https://roicat.readthedocs.io/en/latest/](https://roicat.readthedocs.io/en/latest/)**
 - Discussion forum: [https://groups.google.com/g/roicat_support](https://groups.google.com/g/roicat_support)
@@ -51,7 +56,7 @@ With ROICaT, you can:
 ### TRACKING: 
 - [Online App](https://huggingface.co/spaces/richiehakim/ROICaT_tracking): Good for first time users. Try it out without installing anything.
 - [Interactive
-  notebook](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/tracking/1_tracking_interactive_notebook.ipynb). Or run on google colab: <a target="_blank" href="https://githubtocolab.com/RichieHakim/ROICaT/blob/main/notebooks/tracking/1_tracking_interactive_notebook.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+  notebook](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/tracking/1_tracking_interactive_notebook.ipynb) (also available in colab) $~$<a target="_blank" href="https://githubtocolab.com/RichieHakim/ROICaT/blob/main/notebooks/tracking/1_tracking_interactive_notebook.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
 - [Command line interface script](https://github.com/RichieHakim/ROICaT/blob/main/scripts/run_tracking.sh): 
 ```shell
 roicat --pipeline tracking --path_params /path/to/params.yaml --dir_data /folder/with/data/ --dir_save /folder/save/ --prefix_name_save expName --verbose
@@ -59,9 +64,11 @@ roicat --pipeline tracking --path_params /path/to/params.yaml --dir_data /folder
   
 ### CLASSIFICATION:
 - [Interactive notebook -
-  Drawing](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/A1_classify_by_drawingSelection.ipynb). Or run on google colab: <a target="_blank" href="https://githubtocolab.com/RichieHakim/ROICaT/blob/main/notebooks/classification/A1_classify_by_drawingSelection.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
-- [Interactive notebook -
-  Labeling](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/B1_labeling_interactive.ipynb)
+  Drawing](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/A1_classify_by_drawingSelection.ipynb). (also available in colab) $~$<a target="_blank" href="https://githubtocolab.com/RichieHakim/ROICaT/blob/main/notebooks/classification/A1_classify_by_drawingSelection.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>: $~~$ Use mouse to draw circles around regions of a UMAP to classify ROIs.
+- [Interactive notebook - Simple interactive
+  Labeling](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/B1a_labeling_interactive.ipynb): $~~$ Images of ROIs are displayed and you use the keyboard to manually label them.
+- [Interactive notebook - Interactive labeling with
+  drawing](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/B1b_labeling_drawingAndInteractive.ipynb): $~~$ Draw circles around regions of a UMAP to subselect ROIs for manual labeling.
 - [Interactive notebook - Train
   classifier](https://github.com/RichieHakim/ROICaT/blob/main/notebooks/classification/B2_classifier_train_interactive.ipynb)
 - [Interactive notebook - Inference with
@@ -105,8 +112,10 @@ pip install roicat[all]
 pip install git+https://github.com/RichieHakim/roiextractors
 ```
 **Note on zsh:** if you are using a zsh terminal, change command to: `pip3
-install --user 'roicat[all]'` For installing GPU support on Windows, see
-[Troubleshooting](#troubleshooting-gpu-support) below. 
+install --user 'roicat[all]'` <br>
+**Note on installing GPU support on Windows:** see
+[GPU Troubleshooting](https://roicat.readthedocs.io/en/latest/installation.html#gpu-support-issues)
+documentation.
 <br>
 **Note on opencv:** The headless version of opencv is installed by default. If
 the regular version is already installed, you will need to uninstall it first.
@@ -147,6 +156,13 @@ git pull
    position of the ROIs to track the ROIs across imaging sessions/planes.
 
 
+# Run the app locally
+Although, we recommend transitioning to using the notebooks or CLI instead of the app, you can download and run the app locally with the following command:
+```
+sudo docker run -it -p 7860:7860 --platform=linux/amd64 --shm-size=10g registry.hf.space/richiehakim-roicat-tracking:latest streamlit run app.py
+```
+
+
 # TODO:
 #### algorithmic improvements:
 - [ ] Add in method to use more similarity metrics for tracking
@@ -157,16 +173,23 @@ git pull
 - [ ] Try other clustering methods
 - [x] Make image aligner based on image similarity + RANSAC of centroids or s_SF
 - [ ] Better post-hoc curation metrics and visualizations
+- [ ] Improve non-rigid image registration methods (border performance)
+- [ ] Make non-rigid image registration optional
 #### code improvements:
+- [ ] **Finish ROIextractors integration**
 - [ ] Update automatic regression module (make new repo for it)
 - [ ] Switch to ONNX for ROInet
 - [ ] Some more integration tests
+- [ ] Figure out RNG / OS differences issues for tests
 - [ ] Add more documentation / tutorials
 - [x] Make a GUI
-- [ ] Finish ROIextractors integration
-- [ ] Make a Docker container
+- [ ] Add settings to the GUI
+- ~~[ ] Make a Docker container~~
 - ~~Make colab demo notebook not require user data~~
 - [x] Make a better CLI
+- [ ] Switch to pyproject.toml
+- [ ] Improve params.json / default params system
+- [ ] Spruce up training code
 #### other:
 - [ ] Write the paper
 - [ ] Make tweet about it
@@ -175,3 +198,4 @@ git pull
 - [ ] Better Readme
 - [ ] More documentation
 - [ ] Make a regression model for in-plane-ness
+- [ ] Formalize bounty program
