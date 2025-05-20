@@ -1128,7 +1128,7 @@ class Data_suite2p(Data_roicat):
                 *(n_files, height, width)*.
         """
 
-        print(f"Starting: Importing FOV images from ops files") if self._verbose else None
+        print(f"Starting: Importing FOV images from ops or alf files") if self._verbose else None
         
         assert self.paths_ops is not None, "RH ERROR: paths_ops is None. Please set paths_ops before calling this function."
         assert len(self.paths_ops) > 0, "RH ERROR: paths_ops is empty. Please set paths_ops before calling this function."
@@ -1695,6 +1695,326 @@ class Data_caiman(Data_roicat):
             FOV_images = FOV_images / FOV_images.mean(axis=(1,2), keepdims=True)
 
         return FOV_images
+
+
+class Data_alf(Data_roicat):
+    """
+    Class for handling alf output files and data as used in IBL. This should work
+    analogously to the Data_suite2p class.
+    SP 2024
+
+    Args:
+        paths_FOVs (list of str or pathlib.Path):
+            List of paths to the alf/FOV folders that contain relevant files. 
+            Elements should be one of: str, pathlib.Path, list of str or list of 
+            pathlib.Path.
+        paths_statFiles (list of str or pathlib.Path):
+            List of paths to the stat.npy files. Elements should be one of: str,
+            pathlib.Path, list of str or list of pathlib.Path.
+        paths_opsFiles (list of str or pathlib.Path, optional):
+            List of paths to the ops.npy files. Elements should be one of: str,
+            pathlib.Path, list of str or list of pathlib.Path. Optional. Used to
+            get FOV_images, FOV_height, FOV_width, and shifts (if old matlab ops
+            file).
+        um_per_pixel (Union[float, List[float]]):
+            Resolution in micrometers per pixel of the imaging field of view.
+            The conversion factor from pixels to microns. This is used to scale
+            the ROI_images to a common size. Should either be a float or a list
+            of floats, one for each session.
+        out_height_width (tuple of int):
+            Height and width of output ROI images. These are the little images
+            of centered ROIs that are typically used for passing through the
+            neural net. Unless your ROIs are larger than the default size, it's
+            best to just leave it as default. Should be: *(int, int)* *(y, x)*.
+        type_meanImg (str):
+            Type of mean image to use. Should be: ``'meanImgE'`` or
+            ``'meanImg'``.
+        FOV_images (np.ndarray, optional):
+            FOV images. Array of shape *(n_sessions, FOV_height, FOV_width)*.
+            Optional.
+        centroid_method (str):
+            Method for calculating the centroid of an ROI. Should be:
+            ``'centerOfMass'`` or ``'median'``.
+        class_labels ((list of np.ndarray) or (list of str to paths) or None):
+            Optional. If ``None``, class labels are not set. If list of
+            np.ndarray, each element should be a 1D integer array of length
+            n_roi specifying the class label for each ROI. If list of str, each
+            element should be a path to a .npy file containing an array of
+            length n_roi specifying the class label for each ROI.
+        paths_iscell (str or pathlib.Path or list of str or list of pathlib.Path):
+            Optional. Paths to the iscell.npy files. Elements should be one of:
+            str, pathlib.Path, list of str or list of pathlib.Path. If provided,
+            the iscell.npy files are used to set the class labels. If not
+            provided, the class labels are set to None. An iscell.npy file is
+            assumed to be a 2D numpy array of shape *(n_ROIs, (iscell boolean,
+            probability float))*
+        FOV_height_width (tuple of int, optional):
+            FOV height and width. If ``None``, **paths_opsFiles** must be
+            provided to get FOV height and width.
+        verbose (bool):
+            If ``True``, prints results from each function.
+    """
+    def __init__(
+        self,
+        paths_FOVs: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]],
+        #paths_statFiles: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]],
+        #paths_opsFiles: Optional[Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]] = None,
+        um_per_pixel: Union[float, List[float]] = 1.0,
+        out_height_width: Tuple[int, int] = (36, 36),
+        type_meanImg: str = 'meanImgE',
+        FOV_images: Optional[np.ndarray] = None,
+        centroid_method: str = 'centerOfMass',
+        class_labels: Optional[Union[List[np.ndarray], List[str], None]] = None,
+        paths_iscell: Optional[Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]] = None,
+        FOV_height_width: Optional[Tuple[int, int]] = None,
+        verbose: bool = True,
+    ):
+        """
+        Initialize the Data_alf object.
+        """
+
+        ## Inherit from Data_roicat
+        super().__init__()
+
+        self.paths_FOVs = fix_paths(paths_FOVs)
+        self.n_sessions = len(self.paths_FOVs)
+
+        ## Store parameter (but not data) args as attributes
+        self.params['__init__'] = self._locals_to_params(
+            locals_dict=locals(),
+            keys=[
+                'paths_FOVs',
+                'um_per_pixel',
+                'out_height_width', 
+                'type_meanImg', 
+                'centroid_method', 
+                'paths_iscell',
+                'FOV_height_width',
+                'verbose',
+            ],
+        )
+
+        self._verbose = verbose
+        
+
+        ## Import FOV images
+        ### Assert only one of self.paths_FOVs, FOV_images, or FOV_height_width is provided
+        assert sum([self.paths_FOVs is not None, FOV_images is not None, FOV_height_width is not None]) == 1, "RH ERROR: One (and only one) of self.paths_ops, FOV_images, or FOV_height_width must be provided."
+
+        ### Import FOV images if self.paths_FOVs or FOV_images is provided
+        if self.paths_FOVs is not None:
+            FOV_images = self.import_FOV_images(type_meanImg=type_meanImg)
+        ### Set FOV height and width if FOV_height_width is provided
+        elif FOV_height_width is not None:
+            assert isinstance(FOV_height_width, tuple), "RH ERROR: FOV_height_width must be a tuple of length 2."
+            assert len(FOV_height_width) == 2, "RH ERROR: FOV_height_width must be a tuple of length 2."
+            assert all([isinstance(x, int) for x in FOV_height_width]), "RH ERROR: FOV_height_width must be a tuple of length 2 of integers."
+            self.set_FOVHeightWidth(FOV_height=FOV_height_width[0], FOV_width=FOV_height_width[1])
+        self.set_FOV_images(FOV_images=FOV_images) if FOV_images is not None else None
+
+        ## Import spatial footprints
+        spatialFootprints = self.import_spatialFootprints()
+        self.set_spatialFootprints(spatialFootprints=spatialFootprints, um_per_pixel=um_per_pixel)
+
+        ## Make session_bool
+        self._make_session_bool()
+
+        ## Make spatial footprint centroids
+        self._make_spatialFootprintCentroids(method=centroid_method)
+        
+        ## Transform spatial footprints to ROI images
+        self.transform_spatialFootprints_to_ROIImages(out_height_width=out_height_width)
+
+        ## Make class labels
+        if class_labels is not None:
+            self.set_class_labels(labels=class_labels)
+        elif paths_iscell is not None:
+            self.set_class_labels(labels=[np.load(path)[:,0].astype(np.int64) for path in fix_paths(paths_iscell)])
+
+
+    def import_FOV_images(
+        self,
+        type_meanImg: str = 'meanImgE',
+    ) -> List[np.ndarray]:
+        """
+        Imports the FOV images from ops files or user defined image arrays.
+
+        Args:
+            type_meanImg (str):
+                Type of the mean image. References the key in the ops.npy file.
+                Options are: \n
+                * ``'meanImgE'``: Enhanced mean image. 
+                * ``'meanImg'``: Mean image.
+        
+        Returns:
+            FOV_images (List[np.ndarray]):
+                List of FOV images. Length of the list is the same as
+                self.paths_files. Each element is a numpy.ndarray of shape
+                *(n_files, height, width)*.
+        """
+
+        print(f"Starting: Importing FOV images from ops files") if self._verbose else None
+        
+        assert self.paths_ops is not None, "RH ERROR: paths_ops is None. Please set paths_ops before calling this function."
+        assert len(self.paths_ops) > 0, "RH ERROR: paths_ops is empty. Please set paths_ops before calling this function."
+        assert all([Path(path).exists() for path in self.paths_ops]), f"RH ERROR: One or more paths in paths_ops do not exist: {[path for path in self.paths_ops if not Path(path).exists()]}"
+
+        FOV_images = [np.load(path, allow_pickle=True)[()][type_meanImg] for path in self.paths_ops]
+
+        assert all([FOV_images[0].shape[0] == FOV_images[i].shape[0] for i in range(1, len(FOV_images))]), f"RH ERROR: FOV images are not all the same height. Shapes: {[FOV_image.shape for FOV_image in FOV_images]}"
+        assert all([FOV_images[0].shape[1] == FOV_images[i].shape[1] for i in range(1, len(FOV_images))]), f"RH ERROR: FOV images are not all the same width. Shapes: {[FOV_image.shape for FOV_image in FOV_images]}"
+
+        FOV_images = np.stack(FOV_images, axis=0).astype(np.float32)
+
+        self.set_FOVHeightWidth(FOV_height=FOV_images[0].shape[0], FOV_width=FOV_images[0].shape[1])
+        
+        print(f"Completed: Imported {len(FOV_images)} FOV images.") if self._verbose else None
+        
+        return FOV_images
+    
+    def import_spatialFootprints(
+        self,
+        frame_height_width: Optional[Union[List[int], Tuple[int, int]]] = None,
+        dtype: np.dtype = np.float32,
+    ) -> List[scipy.sparse.csr_matrix]:
+        """
+        Imports and converts the spatial footprints of the ROIs in the stat
+        files into images in sparse arrays.
+
+        Generates **self.session_bool** which is a bool np.ndarray of shape
+        *(n_roi, n_sessions)* indicating which session each ROI belongs to.
+
+        Args:
+            frame_height_width (Optional[Union[List[int], Tuple[int, int]]]):
+                The *height* and *width* of the frame in the form *[height,
+                width]*. If ``None``, ``self.import_FOV_images`` must be called
+                before this method, and the frame height and width will be taken
+                from the first FOV image. (Default is ``None``)
+            dtype (np.dtype):
+                Data type of the sparse array. (Default is ``np.float32``)
+
+        Returns:
+            (List[scipy.sparse.csr_matrix]): 
+                sf (List[scipy.sparse.csr_matrix]):
+                    Spatial footprints. Length of the list is the same as
+                    ``self.paths_files``. Each element is a
+                    scipy.sparse.csr_matrix of shape *(n_roi, frame_height *
+                    frame_width)*.
+        """
+        print("Importing spatial footprints from stat files.") if self._verbose else None
+
+        ## Check and fix inputs
+        if frame_height_width is None:
+            frame_height_width = [self.FOV_height, self.FOV_width]
+
+        assert self.paths_stat is not None, "RH ERROR: paths_stat is None. Please set paths_stat before calling this function."
+        assert len(self.paths_stat) > 0, "RH ERROR: paths_stat is empty. Please set paths_stat before calling this function."
+        assert all([Path(path).exists() for path in self.paths_stat]), f"RH ERROR: One or more paths in paths_stat do not exist: {[path for path in self.paths_stat if not Path(path).exists()]}"
+
+        assert hasattr(self, 'shifts'), "RH ERROR: shifts is not defined. Please call ._make_shifts before calling this function."
+
+        statFiles = [np.load(path, allow_pickle=True) for path in self.paths_stat]
+
+        n = self.n_sessions
+        spatialFootprints = [
+            _transform_statFile_to_spatialFootprints(
+                frame_height_width=frame_height_width,
+                stat=statFiles[ii],
+                shifts=self.shifts[ii],
+                dtype=dtype,
+                normalize_mask=True,
+            ) for ii in tqdm(range(n))]
+
+        if self._verbose:
+            print(f"Imported {len(spatialFootprints)} sessions of spatial footprints into sparse arrays.")
+
+        return spatialFootprints
+    
+
+    def import_neuropil_masks(
+        self,
+        frame_height_width: Optional[Union[List[int], Tuple[int, int]]] = None,
+    ) -> List[scipy.sparse.csr_matrix]:
+        """
+        Imports and converts the neuropil masks of the ROIs in the stat files
+        into images in sparse arrays.
+
+        Args:
+            frame_height_width (Optional[Union[List[int], Tuple[int, int]]]):
+                The *height* and *width* of the frame in the form *[height,
+                width]*. If ``None``, the height and width will be taken from
+                the FOV images. (Default is ``None``)
+
+        Returns:
+            (List[scipy.sparse.csr_matrix]): 
+                neuropilMasks (List[scipy.sparse.csr_matrix]):
+                    List of neuropil masks. Length of the list is the same as
+                    ``self.paths_stat``. Each element is a sparse array of shape
+                    *(n_roi, frame_height, frame_width)*.
+        """
+        print("Importing neuropil masks from stat files.") if self._verbose else None
+
+        ## Check and fix inputs
+        if frame_height_width is None:
+            frame_height_width = [self.FOV_height, self.FOV_width]
+
+        assert self.paths_stat is not None, "RH ERROR: paths_stat is None. Please set paths_stat before calling this function."
+        assert len(self.paths_stat) > 0, "RH ERROR: paths_stat is empty. Please set paths_stat before calling this function."
+        assert all([Path(path).exists() for path in self.paths_stat]), f"RH ERROR: One or more paths in paths_stat do not exist: {[path for path in self.paths_stat if not Path(path).exists()]}"
+
+        assert hasattr(self, 'shifts'), "RH ERROR: shifts is not defined. Please call ._make_shifts before calling this function."
+
+        statFiles = [np.load(path, allow_pickle=True) for path in self.paths_stat]
+
+        n = self.n_sessions
+        neuropilMasks = [
+            _transform_statFile_to_neuropilMasks(
+                frame_height_width=frame_height_width,
+                stat=statFiles[ii],
+                shifts=self.shifts[ii],
+            ) for ii in tqdm(range(n))]
+        
+        if self._verbose:
+            print(f"Imported {len(neuropilMasks)} sessions of neuropil masks into sparse arrays.")  
+
+        self.neuropilMasks = neuropilMasks
+        return neuropilMasks
+    
+
+    def _make_shifts(
+        self, 
+        paths_ops: Optional[List[str]] = None, 
+        new_or_old_suite2p: str = 'new',
+    ) -> List[np.ndarray]:
+        """
+        Helper function to make the shifts for the old suite2p indexing.
+
+        Args:
+            paths_ops (list of str, optional):
+                List of paths to the ops.npy files. Default is ``None``.
+            new_or_old_suite2p (str):
+                Type of suite2p output files. Should be: ``'new'`` or ``'old'``.
+                Default is ``'new'``.
+
+        Returns:
+            (List[np.ndarray]):
+                shifts (List[np.ndarray]):
+                    List of shifts. Length of the list is the same as
+                    ``self.paths_files``. Each element is a numpy array of
+                    shape *(2,)*.
+        """        
+        if paths_ops is None:
+            shifts = [np.array([0,0], dtype=np.uint64)]*self.n_sessions
+            return shifts
+
+        if new_or_old_suite2p == 'old':
+            shifts = [np.array([op['yrange'].min()-1, op['xrange'].min()-1], dtype=np.uint64) for op in [np.load(path, allow_pickle=True)[()] for path in paths_ops]]
+        elif new_or_old_suite2p == 'new':
+            shifts = [np.array([0,0], dtype=np.uint64)]*len(paths_ops)
+        else:
+            raise ValueError(f"RH ERROR: new_or_old_suite2p should be 'new' or 'old'. Got {new_or_old_suite2p}")
+        return shifts
+
     
 
 ############################################

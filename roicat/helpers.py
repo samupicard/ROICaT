@@ -2789,7 +2789,11 @@ class IntegratedLabeler:
 
     Args:
         images (np.ndarray): 
-            A numpy array of images. Either 3D: *(n_images, height, width)* or
+            A numpy array of images shown in embedding. Either 3D: *(n_images, height, width)* or
+            4D: *(n_images, height, width, n_channels)*. Images should be scaled
+            between 0 and 255 and will be converted to uint8.
+        mean_images (np.ndarray):
+            A numpy array of complementary (e.g. mean). Either 3D: *(n_images, height, width)* or
             4D: *(n_images, height, width, n_channels)*. Images should be scaled
             between 0 and 255 and will be converted to uint8.
         embeddings (np.ndarray):
@@ -2840,6 +2844,7 @@ class IntegratedLabeler:
         .. code-block:: python
             with IntegratedLabeler(
                 images,
+                mean_images,
                 embeddings=emb,
                 idx_images_overlay=idx_images_overlay,
                 size_images_overlay=0.25,
@@ -2864,10 +2869,11 @@ class IntegratedLabeler:
     def __init__(
         self, 
         images: np.ndarray,
+        mean_images: np.ndarray,
         embeddings: np.ndarray = None,
         idx_images_overlay: Optional[np.ndarray] = None,
         idx_selection: Optional[List[int]] = None,
-        figsize: float = 5,
+        figsize: float = 7,
         size_images_overlay: Optional[float] = None,
         crop_images_overlay: Optional[float] = 0.35,
         frac_overlap_allowed: float = 0.5,
@@ -2886,6 +2892,7 @@ class IntegratedLabeler:
         """Build the IntegratedLabeler Object."""
         # Data attributes
         self.images = images
+        self.mean_images = mean_images
         self.embeddings = embeddings
         self.idx_images_overlay = idx_images_overlay
 
@@ -2942,13 +2949,21 @@ class IntegratedLabeler:
             main_container = ttk.PanedWindow(self._root, orient=tk.HORIZONTAL)
             main_container.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
 
-            # Left panel for image display
+            # Left panel for mask image display
             left_panel = ttk.Frame(main_container)
             self._img_fig, self._img_ax = plt.subplots(figsize=(self.figsize, self.figsize))
             self._img_canvas = FigureCanvasTkAgg(self._img_fig, master=left_panel)
             self._img_canvas.draw()
             self._img_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             main_container.add(left_panel)
+
+            # Middle panel for mean image display
+            middle_panel = ttk.Frame(main_container)
+            self._mimg_fig, self._mimg_ax = plt.subplots(figsize=(self.figsize, self.figsize))
+            self._mimg_canvas = FigureCanvasTkAgg(self._mimg_fig, master=middle_panel)
+            self._mimg_canvas.draw()
+            self._mimg_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            main_container.add(middle_panel)
 
             # Right panel for scatterplot
             right_panel = ttk.Frame(main_container)
@@ -2960,6 +2975,7 @@ class IntegratedLabeler:
 
             # Make figures fill the space
             self._img_fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98)
+            self._mimg_fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98)
             self._scatter_fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98)
             
             # Build scatter plot
@@ -3024,7 +3040,7 @@ class IntegratedLabeler:
         """Displays the next image and updates the matplotlib plot."""
         self._index += 1
         if self._index < len(self._idx_selection):
-            # Update image display
+            # Update image displays
             im = self.images[self._get_current_idx()]
             im = (im / np.max(im)) * 255 if self._normalize_images else im
             # Update data of _img_ax
@@ -3034,6 +3050,16 @@ class IntegratedLabeler:
             self._img_ax.set_xticks([])
             self._img_ax.set_yticks([])
             self._img_canvas.draw()
+
+            # Update helper image displays
+            mim = self.mean_images[self._get_current_idx()]
+            mim = (mim / np.max(mim)) * 255 if self._normalize_images else im
+            # Update data of _mimg_ax
+            self._mimg_ax.clear()
+            self._mimg_ax.imshow(mim, cmap='gray')
+            self._mimg_ax.set_xticks([])
+            self._mimg_ax.set_yticks([])
+            self._mimg_canvas.draw()
             
             self._root.title(str(self._get_current_idx()))
 
@@ -3070,10 +3096,13 @@ class IntegratedLabeler:
         try:
             if hasattr(self, '_img_fig') and self._img_fig is not None:
                 plt.close(self._img_fig)
+            if hasattr(self, '_mimg_fig') and self._mimg_fig is not None:
+                plt.close(self._mimg_fig)
             if hasattr(self, '_scatter_fig') and self._scatter_fig is not None:
                 plt.close(self._scatter_fig)
             
             self._img_fig = None
+            self._mimg_fig = None
             self._scatter_fig = None
             self._img_canvas = None
             self._scatter_canvas = None
